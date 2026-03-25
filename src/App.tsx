@@ -35,6 +35,7 @@ interface OverlaySettings {
 }
 
 const CHROMA_GREEN = '#00ff00';
+const SETTINGS_STORAGE_KEY = 'obs-overlay-settings-v1';
 
 const PRESETS: Record<string, Partial<OverlaySettings>> = {
   'Neon Elite': {
@@ -128,6 +129,32 @@ const DEFAULT_SETTINGS: OverlaySettings = {
   realismLevel: 80,
   glowStrength: 70,
   mouseSkinUrl: '',
+};
+
+const loadStoredSettings = (): OverlaySettings => {
+  if (typeof window === 'undefined') {
+    return DEFAULT_SETTINGS;
+  }
+
+  const rawSettings = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
+  if (!rawSettings) {
+    return DEFAULT_SETTINGS;
+  }
+
+  try {
+    const parsedSettings = JSON.parse(rawSettings);
+    if (!parsedSettings || typeof parsedSettings !== 'object' || Array.isArray(parsedSettings)) {
+      return DEFAULT_SETTINGS;
+    }
+
+    return {
+      ...DEFAULT_SETTINGS,
+      ...parsedSettings,
+    };
+  } catch (error) {
+    console.warn('Failed to parse saved overlay settings; falling back to defaults.', error);
+    return DEFAULT_SETTINGS;
+  }
 };
 
 // --- Components ---
@@ -660,7 +687,7 @@ export default function App() {
   const [activeMouseButtons, setActiveMouseButtons] = useState<Set<number>>(new Set());
   const [mousePos, setMousePos] = useState({ x: 0.5, y: 0.5 });
   const [scrollDirection, setScrollDirection] = useState<'up' | 'down' | null>(null);
-  const [settings, setSettings] = useState<OverlaySettings>(DEFAULT_SETTINGS);
+  const [settings, setSettings] = useState<OverlaySettings>(() => loadStoredSettings());
   const [showSettings, setShowSettings] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -754,6 +781,14 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    try {
+      window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+    } catch (error) {
+      console.warn('Failed to persist overlay settings.', error);
+    }
+  }, [settings]);
+
+  useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
     window.addEventListener('mousedown', handleMouseDown);
@@ -782,6 +817,14 @@ export default function App() {
       ...DEFAULT_SETTINGS, 
       ...PRESETS[presetName] 
     }));
+  };
+
+  const resetSettings = () => {
+    const shouldReset = window.confirm('Reset all overlay settings to defaults?');
+    if (!shouldReset) return;
+
+    window.localStorage.removeItem(SETTINGS_STORAGE_KEY);
+    setSettings(DEFAULT_SETTINGS);
   };
 
   return (
@@ -1230,6 +1273,15 @@ export default function App() {
                   </div>
                 </div>
               </section>
+            </div>
+
+            <div className="mt-6 border-t border-white/10 pt-4">
+              <button
+                onClick={resetSettings}
+                className="w-full rounded border border-red-400/30 bg-red-500/10 px-3 py-2 text-xs font-bold uppercase tracking-widest text-red-300 transition-colors hover:bg-red-500/20"
+              >
+                Reset to Defaults
+              </button>
             </div>
 
             <div className="mt-12 pt-8 border-t border-white/5">
