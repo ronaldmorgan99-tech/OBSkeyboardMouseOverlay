@@ -908,6 +908,10 @@ export default function App() {
     return wsProvider.connect(inputController, setExternalConnectionStatus);
   }, [inputController, settings.inputMode, settings.externalInputUrl]);
 
+  const handleContextMenu = useCallback((e: MouseEvent) => {
+    e.preventDefault();
+  }, []);
+
   useEffect(() => {
     const shouldUseBrowserProvider =
       settings.inputMode === 'browser' ||
@@ -920,6 +924,24 @@ export default function App() {
     const browserProvider = createBrowserEventsProvider(mouseTimeoutRef);
     return browserProvider.connect(inputController);
   }, [inputController, externalConnectionStatus, settings.inputMode]);
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('mousedown', handleMouseDown);
+    window.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('wheel', handleWheel);
+    window.addEventListener('contextmenu', handleContextMenu);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('mousedown', handleMouseDown);
+      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('wheel', handleWheel);
+      window.removeEventListener('contextmenu', handleContextMenu);
+    };
+  }, [handleKeyDown, handleKeyUp, handleMouseDown, handleMouseUp, handleMouseMove, handleWheel, handleContextMenu]);
 
   const updateSetting = (key: keyof OverlaySettings, value: any) => {
     setSettings(prev => ({ ...prev, [key]: value }));
