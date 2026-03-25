@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Settings, MousePointer2, Keyboard, Palette, Layout as LayoutIcon, Sliders } from 'lucide-react';
 
@@ -32,6 +32,28 @@ interface OverlaySettings {
   realismLevel: number; // 0 (flat) to 100 (high realism)
   glowStrength: number; // 0 to 100
   mouseSkinUrl?: string;
+  inputMode: 'browser' | 'external';
+  externalInputUrl: string;
+}
+
+type InputConnectionStatus = 'disabled' | 'connecting' | 'connected' | 'disconnected' | 'error';
+
+interface InputController {
+  pressKey: (code: string) => void;
+  releaseKey: (code: string) => void;
+  setActiveKeys: (codes: string[]) => void;
+  pressMouseButton: (button: number) => void;
+  releaseMouseButton: (button: number) => void;
+  setActiveMouseButtons: (buttons: number[]) => void;
+  updateMousePos: (x: number, y: number) => void;
+  pulseScroll: (direction: 'up' | 'down') => void;
+}
+
+interface InputProvider {
+  connect: (
+    controller: InputController,
+    onStatus?: (status: InputConnectionStatus) => void
+  ) => () => void;
 }
 
 const CHROMA_GREEN = '#00ff00';
@@ -128,6 +150,8 @@ const DEFAULT_SETTINGS: OverlaySettings = {
   realismLevel: 80,
   glowStrength: 70,
   mouseSkinUrl: '',
+  inputMode: 'browser',
+  externalInputUrl: 'ws://127.0.0.1:4456',
 };
 
 // --- Components ---
@@ -655,6 +679,133 @@ const MouseOverlay = ({ activeButtons, scrollDirection, settings, mousePos }: { 
   );
 };
 
+const createBrowserEventsProvider = (mouseTimeoutRef: React.MutableRefObject<NodeJS.Timeout | null>): InputProvider => ({
+  connect: (controller) => {
+    const handleKeyDown = (e: KeyboardEvent) => controller.pressKey(e.code);
+    const handleKeyUp = (e: KeyboardEvent) => controller.releaseKey(e.code);
+    const handleMouseDown = (e: MouseEvent) => controller.pressMouseButton(e.button);
+    const handleMouseUp = (e: MouseEvent) => controller.releaseMouseButton(e.button);
+    const handleWheel = (e: WheelEvent) => controller.pulseScroll(e.deltaY < 0 ? 'up' : 'down');
+    const handleMouseMove = (e: MouseEvent) => {
+      if (mouseTimeoutRef.current) {
+        clearTimeout(mouseTimeoutRef.current);
+      }
+
+      controller.updateMousePos(e.clientX / window.innerWidth, e.clientY / window.innerHeight);
+
+      mouseTimeoutRef.current = setTimeout(() => {
+        controller.updateMousePos(0.5, 0.5);
+      }, 100);
+    };
+    const preventContextMenu = (e: MouseEvent) => e.preventDefault();
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('mousedown', handleMouseDown);
+    window.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('wheel', handleWheel);
+    window.addEventListener('contextmenu', preventContextMenu);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('mousedown', handleMouseDown);
+      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('wheel', handleWheel);
+      window.removeEventListener('contextmenu', preventContextMenu);
+    };
+  },
+});
+
+const createWebSocketInputProvider = (url: string): InputProvider => ({
+  connect: (controller, onStatus) => {
+    onStatus?.('connecting');
+
+    let socket: WebSocket | null = null;
+    try {
+      socket = new WebSocket(url);
+    } catch {
+      onStatus?.('error');
+      return () => undefined;
+    }
+
+    const handleOpen = () => onStatus?.('connected');
+    const handleClose = () => onStatus?.('disconnected');
+    const handleError = () => onStatus?.('error');
+    const handleMessage = (event: MessageEvent) => {
+      let payload: unknown;
+      try {
+        payload = JSON.parse(event.data);
+      } catch {
+        return;
+      }
+
+      if (!payload || typeof payload !== 'object') return;
+      const data = payload as Record<string, unknown>;
+      const type = data.type;
+      if (typeof type !== 'string') return;
+
+      if (type === 'key' && typeof data.code === 'string' && typeof data.pressed === 'boolean') {
+        data.pressed ? controller.pressKey(data.code) : controller.releaseKey(data.code);
+        return;
+      }
+
+      if (type === 'mouse_button' && typeof data.button === 'number' && typeof data.pressed === 'boolean') {
+        data.pressed ? controller.pressMouseButton(data.button) : controller.releaseMouseButton(data.button);
+        return;
+      }
+
+      if (type === 'mouse_move' && typeof data.x === 'number' && typeof data.y === 'number') {
+        controller.updateMousePos(data.x, data.y);
+        return;
+      }
+
+      if (type === 'wheel') {
+        if (data.direction === 'up' || data.direction === 'down') {
+          controller.pulseScroll(data.direction);
+        } else if (typeof data.deltaY === 'number') {
+          controller.pulseScroll(data.deltaY < 0 ? 'up' : 'down');
+        }
+        return;
+      }
+
+      if (type === 'snapshot') {
+        if (Array.isArray(data.activeKeys) && data.activeKeys.every((k) => typeof k === 'string')) {
+          controller.setActiveKeys(data.activeKeys as string[]);
+        }
+        if (Array.isArray(data.activeMouseButtons) && data.activeMouseButtons.every((b) => typeof b === 'number')) {
+          controller.setActiveMouseButtons(data.activeMouseButtons as number[]);
+        }
+        if (
+          data.mousePos &&
+          typeof data.mousePos === 'object' &&
+          typeof (data.mousePos as Record<string, unknown>).x === 'number' &&
+          typeof (data.mousePos as Record<string, unknown>).y === 'number'
+        ) {
+          const pos = data.mousePos as { x: number; y: number };
+          controller.updateMousePos(pos.x, pos.y);
+        }
+      }
+    };
+
+    socket.addEventListener('open', handleOpen);
+    socket.addEventListener('close', handleClose);
+    socket.addEventListener('error', handleError);
+    socket.addEventListener('message', handleMessage);
+
+    return () => {
+      if (!socket) return;
+      socket.removeEventListener('open', handleOpen);
+      socket.removeEventListener('close', handleClose);
+      socket.removeEventListener('error', handleError);
+      socket.removeEventListener('message', handleMessage);
+      socket.close();
+    };
+  },
+});
+
 export default function App() {
   const [activeKeys, setActiveKeys] = useState<Set<string>>(new Set());
   const [activeMouseButtons, setActiveMouseButtons] = useState<Set<number>>(new Set());
@@ -662,6 +813,7 @@ export default function App() {
   const [scrollDirection, setScrollDirection] = useState<'up' | 'down' | null>(null);
   const [settings, setSettings] = useState<OverlaySettings>(DEFAULT_SETTINGS);
   const [showSettings, setShowSettings] = useState(false);
+  const [externalConnectionStatus, setExternalConnectionStatus] = useState<InputConnectionStatus>('disabled');
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const mouseTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -702,76 +854,72 @@ export default function App() {
     return () => cancelAnimationFrame(animationFrameId);
   }, [settings.rgbMode, settings.rgbSpeed, settings.activeColor, settings.glowColor, settings.textColor]);
 
-  const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    setActiveKeys(prev => new Set(prev).add(e.code));
-  }, []);
-
-  const handleKeyUp = useCallback((e: KeyboardEvent) => {
-    setActiveKeys(prev => {
-      const next = new Set(prev);
-      next.delete(e.code);
-      return next;
-    });
-  }, []);
-
-  const handleMouseDown = useCallback((e: MouseEvent) => {
-    setActiveMouseButtons(prev => new Set(prev).add(e.button));
-  }, []);
-
-  const handleMouseUp = useCallback((e: MouseEvent) => {
-    setActiveMouseButtons(prev => {
-      const next = new Set(prev);
-      next.delete(e.button);
-      return next;
-    });
-  }, []);
-
-  const handleWheel = useCallback((e: WheelEvent) => {
-    if (scrollTimeoutRef.current) {
-      clearTimeout(scrollTimeoutRef.current);
-    }
-    
-    setScrollDirection(e.deltaY < 0 ? 'up' : 'down');
-    
-    scrollTimeoutRef.current = setTimeout(() => {
-      setScrollDirection(null);
-    }, 150);
-  }, []);
-
-  const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (mouseTimeoutRef.current) {
-      clearTimeout(mouseTimeoutRef.current);
-    }
-
-    setMousePos({
-      x: e.clientX / window.innerWidth,
-      y: e.clientY / window.innerHeight
-    });
-
-    mouseTimeoutRef.current = setTimeout(() => {
-      setMousePos({ x: 0.5, y: 0.5 });
-    }, 100);
-  }, []);
+  const inputController = useMemo<InputController>(() => ({
+    pressKey: (code: string) => {
+      setActiveKeys((prev) => new Set(prev).add(code));
+    },
+    releaseKey: (code: string) => {
+      setActiveKeys((prev) => {
+        const next = new Set(prev);
+        next.delete(code);
+        return next;
+      });
+    },
+    setActiveKeys: (codes: string[]) => {
+      setActiveKeys(new Set(codes));
+    },
+    pressMouseButton: (button: number) => {
+      setActiveMouseButtons((prev) => new Set(prev).add(button));
+    },
+    releaseMouseButton: (button: number) => {
+      setActiveMouseButtons((prev) => {
+        const next = new Set(prev);
+        next.delete(button);
+        return next;
+      });
+    },
+    setActiveMouseButtons: (buttons: number[]) => {
+      setActiveMouseButtons(new Set(buttons));
+    },
+    updateMousePos: (x: number, y: number) => {
+      setMousePos({
+        x: Math.min(1, Math.max(0, x)),
+        y: Math.min(1, Math.max(0, y)),
+      });
+    },
+    pulseScroll: (direction: 'up' | 'down') => {
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+      setScrollDirection(direction);
+      scrollTimeoutRef.current = setTimeout(() => {
+        setScrollDirection(null);
+      }, 150);
+    },
+  }), []);
 
   useEffect(() => {
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
-    window.addEventListener('mousedown', handleMouseDown);
-    window.addEventListener('mouseup', handleMouseUp);
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('wheel', handleWheel);
-    window.addEventListener('contextmenu', (e) => e.preventDefault());
+    if (settings.inputMode !== 'external') {
+      setExternalConnectionStatus('disabled');
+      return;
+    }
 
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
-      window.removeEventListener('mousedown', handleMouseDown);
-      window.removeEventListener('mouseup', handleMouseUp);
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('wheel', handleWheel);
-      window.removeEventListener('contextmenu', (e) => e.preventDefault());
-    };
-  }, [handleKeyDown, handleKeyUp, handleMouseDown, handleMouseUp, handleMouseMove, handleWheel]);
+    const wsProvider = createWebSocketInputProvider(settings.externalInputUrl);
+    return wsProvider.connect(inputController, setExternalConnectionStatus);
+  }, [inputController, settings.inputMode, settings.externalInputUrl]);
+
+  useEffect(() => {
+    const shouldUseBrowserProvider =
+      settings.inputMode === 'browser' ||
+      (settings.inputMode === 'external' && externalConnectionStatus !== 'connected');
+
+    if (!shouldUseBrowserProvider) {
+      return;
+    }
+
+    const browserProvider = createBrowserEventsProvider(mouseTimeoutRef);
+    return browserProvider.connect(inputController);
+  }, [inputController, externalConnectionStatus, settings.inputMode]);
 
   const updateSetting = (key: keyof OverlaySettings, value: any) => {
     setSettings(prev => ({ ...prev, [key]: value }));
@@ -782,6 +930,22 @@ export default function App() {
       ...DEFAULT_SETTINGS, 
       ...PRESETS[presetName] 
     }));
+  };
+
+  const isExternalMode = settings.inputMode === 'external';
+  const connectionLabel: Record<InputConnectionStatus, string> = {
+    disabled: 'Disabled',
+    connecting: 'Connecting',
+    connected: 'Connected',
+    disconnected: 'Disconnected (Browser Fallback)',
+    error: 'Connection Error (Browser Fallback)',
+  };
+  const connectionClassName: Record<InputConnectionStatus, string> = {
+    disabled: 'border-white/20 text-white/70',
+    connecting: 'border-amber-400/50 text-amber-300',
+    connected: 'border-emerald-400/50 text-emerald-300',
+    disconnected: 'border-orange-400/50 text-orange-300',
+    error: 'border-red-400/50 text-red-300',
   };
 
   return (
@@ -816,6 +980,12 @@ export default function App() {
       {/* Live Status Panel */}
       {!settings.transparentMode && (
         <LiveStatus activeKeys={activeKeys} activeMouseButtons={activeMouseButtons} settings={settings} />
+      )}
+
+      {isExternalMode && (
+        <div className={`absolute top-6 right-6 z-30 px-3 py-1 rounded-full border text-[10px] uppercase tracking-widest bg-black/40 backdrop-blur ${connectionClassName[externalConnectionStatus]}`}>
+          External Input: {connectionLabel[externalConnectionStatus]}
+        </div>
       )}
 
       {/* Scanlines Effect */}
@@ -971,6 +1141,37 @@ export default function App() {
                     </button>
                   ))}
                 </div>
+              </section>
+
+              {/* Input Pipeline */}
+              <section className="p-4 bg-sky-500/10 border border-sky-500/20 rounded-lg space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex flex-col">
+                    <span className="text-sm font-bold uppercase tracking-tight text-sky-300">External Input Mode</span>
+                    <span className="text-[10px] opacity-60">Use companion WebSocket events</span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={settings.inputMode === 'external'}
+                    onChange={(e) => updateSetting('inputMode', e.target.checked ? 'external' : 'browser')}
+                    className="w-5 h-5 accent-sky-500"
+                  />
+                </div>
+
+                {settings.inputMode === 'external' && (
+                  <div className="space-y-2">
+                    <label className="text-[10px] uppercase font-bold opacity-50">WebSocket URL</label>
+                    <input
+                      type="text"
+                      value={settings.externalInputUrl}
+                      onChange={(e) => updateSetting('externalInputUrl', e.target.value)}
+                      className="w-full bg-black/40 border border-white/10 rounded px-2 py-1 text-xs text-white focus:border-sky-400/60 outline-none"
+                    />
+                    <p className="text-[9px] opacity-50 italic">
+                      Expected JSON: key, mouse_button, mouse_move, wheel, and snapshot events.
+                    </p>
+                  </div>
+                )}
               </section>
 
               {/* Chroma Key / Transparent Mode */}
