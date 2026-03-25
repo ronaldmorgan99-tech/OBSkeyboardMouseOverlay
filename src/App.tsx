@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Settings, MousePointer2, Keyboard, Palette, Layout as LayoutIcon, Sliders } from 'lucide-react';
 
@@ -35,6 +35,7 @@ interface OverlaySettings {
 }
 
 const CHROMA_GREEN = '#00ff00';
+const SETTINGS_STORAGE_KEY = 'obs-overlay-settings-v1';
 
 const PRESETS: Record<string, Partial<OverlaySettings>> = {
   'Neon Elite': {
@@ -128,6 +129,32 @@ const DEFAULT_SETTINGS: OverlaySettings = {
   realismLevel: 80,
   glowStrength: 70,
   mouseSkinUrl: '',
+};
+
+const loadStoredSettings = (): OverlaySettings => {
+  if (typeof window === 'undefined') {
+    return DEFAULT_SETTINGS;
+  }
+
+  const rawSettings = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
+  if (!rawSettings) {
+    return DEFAULT_SETTINGS;
+  }
+
+  try {
+    const parsedSettings = JSON.parse(rawSettings);
+    if (!parsedSettings || typeof parsedSettings !== 'object' || Array.isArray(parsedSettings)) {
+      return DEFAULT_SETTINGS;
+    }
+
+    return {
+      ...DEFAULT_SETTINGS,
+      ...parsedSettings,
+    };
+  } catch (error) {
+    console.warn('Failed to parse saved overlay settings; falling back to defaults.', error);
+    return DEFAULT_SETTINGS;
+  }
 };
 
 // --- Components ---
@@ -656,12 +683,30 @@ const MouseOverlay = ({ activeButtons, scrollDirection, settings, mousePos }: { 
 };
 
 export default function App() {
+  const urlConfig = useMemo(() => {
+    const params = new URLSearchParams(window.location.search);
+    const mode = (params.get('mode') || '').toLowerCase();
+    const isOverlayMode = mode === 'overlay';
+    const hideSettings = params.get('hideSettings') === '1' || params.get('hideSettings')?.toLowerCase() === 'true';
+    const transparent = params.get('transparent') === '1' || params.get('transparent')?.toLowerCase() === 'true';
+    const preset = params.get('preset');
+
+    return {
+      isOverlayMode,
+      shouldHideSettings: isOverlayMode || hideSettings,
+      transparent,
+      preset,
+    };
+  }, []);
+
   const [activeKeys, setActiveKeys] = useState<Set<string>>(new Set());
   const [activeMouseButtons, setActiveMouseButtons] = useState<Set<number>>(new Set());
   const [mousePos, setMousePos] = useState({ x: 0.5, y: 0.5 });
   const [scrollDirection, setScrollDirection] = useState<'up' | 'down' | null>(null);
-  const [settings, setSettings] = useState<OverlaySettings>(DEFAULT_SETTINGS);
+  const [settings, setSettings] = useState<OverlaySettings>(() => loadStoredSettings());
   const [showSettings, setShowSettings] = useState(false);
+  const [settings, setSettings] = useState<OverlaySettings>(DEFAULT_SETTINGS);
+  const [showSettings, setShowSettings] = useState(!urlConfig.shouldHideSettings);
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const mouseTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -753,6 +798,48 @@ export default function App() {
     }, 100);
   }, []);
 
+  const handleContextMenu = useCallback((e: MouseEvent) => {
+    e.preventDefault();
+  }, []);
+
+  useEffect(() => {
+    setSettings(prev => {
+      let nextSettings: OverlaySettings = { ...prev };
+
+      if (urlConfig.preset) {
+        const presetName = Object.keys(PRESETS).find((name) => name.toLowerCase() === urlConfig.preset!.toLowerCase());
+        if (presetName) {
+          nextSettings = {
+            ...DEFAULT_SETTINGS,
+            ...PRESETS[presetName],
+          } as OverlaySettings;
+        }
+      }
+
+      if (urlConfig.transparent) {
+        nextSettings = {
+          ...nextSettings,
+          transparentMode: true,
+          chromaKeyMode: false,
+        };
+      }
+
+      return nextSettings;
+    });
+
+    if (urlConfig.shouldHideSettings) {
+      setShowSettings(false);
+    }
+  }, [urlConfig]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+    } catch (error) {
+      console.warn('Failed to persist overlay settings.', error);
+    }
+  }, [settings]);
+
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
@@ -760,7 +847,7 @@ export default function App() {
     window.addEventListener('mouseup', handleMouseUp);
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('wheel', handleWheel);
-    window.addEventListener('contextmenu', (e) => e.preventDefault());
+    window.addEventListener('contextmenu', handleContextMenu);
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
@@ -769,9 +856,9 @@ export default function App() {
       window.removeEventListener('mouseup', handleMouseUp);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('wheel', handleWheel);
-      window.removeEventListener('contextmenu', (e) => e.preventDefault());
+      window.removeEventListener('contextmenu', handleContextMenu);
     };
-  }, [handleKeyDown, handleKeyUp, handleMouseDown, handleMouseUp, handleMouseMove, handleWheel]);
+  }, [handleKeyDown, handleKeyUp, handleMouseDown, handleMouseUp, handleMouseMove, handleWheel, handleContextMenu]);
 
   const updateSetting = (key: keyof OverlaySettings, value: any) => {
     setSettings(prev => ({ ...prev, [key]: value }));
@@ -782,6 +869,14 @@ export default function App() {
       ...DEFAULT_SETTINGS, 
       ...PRESETS[presetName] 
     }));
+  };
+
+  const resetSettings = () => {
+    const shouldReset = window.confirm('Reset all overlay settings to defaults?');
+    if (!shouldReset) return;
+
+    window.localStorage.removeItem(SETTINGS_STORAGE_KEY);
+    setSettings(DEFAULT_SETTINGS);
   };
 
   return (
@@ -869,20 +964,22 @@ export default function App() {
       </div>
 
       {/* Settings Toggle */}
-      <button 
-        onClick={() => setShowSettings(!showSettings)}
-        className="fixed bottom-12 right-12 w-16 h-16 flex items-center justify-center bg-black/60 hover:bg-black/80 border border-yellow-500/20 rounded-full transition-all z-50 group backdrop-blur-3xl"
-        style={{ 
-          boxShadow: !settings.chromaKeyMode ? '0 10px 30px rgba(0,0,0,0.6), 0 0 0 1px rgba(250, 204, 21, 0.1)' : ''
-        }}
-      >
-        <Settings className={`w-7 h-7 transition-transform duration-700 ${showSettings ? 'rotate-180' : 'group-hover:rotate-90'} text-yellow-500`} />
-        <div className="absolute inset-0 rounded-full bg-yellow-500/5 opacity-0 group-hover:opacity-100 transition-opacity" />
-      </button>
+      {!urlConfig.shouldHideSettings && (
+        <button 
+          onClick={() => setShowSettings(!showSettings)}
+          className="fixed bottom-12 right-12 w-16 h-16 flex items-center justify-center bg-black/60 hover:bg-black/80 border border-yellow-500/20 rounded-full transition-all z-50 group backdrop-blur-3xl"
+          style={{ 
+            boxShadow: !settings.chromaKeyMode ? '0 10px 30px rgba(0,0,0,0.6), 0 0 0 1px rgba(250, 204, 21, 0.1)' : ''
+          }}
+        >
+          <Settings className={`w-7 h-7 transition-transform duration-700 ${showSettings ? 'rotate-180' : 'group-hover:rotate-90'} text-yellow-500`} />
+          <div className="absolute inset-0 rounded-full bg-yellow-500/5 opacity-0 group-hover:opacity-100 transition-opacity" />
+        </button>
+      )}
 
       {/* Settings Panel */}
       <AnimatePresence>
-        {showSettings && (
+        {showSettings && !urlConfig.shouldHideSettings && (
           <motion.div 
             initial={{ x: 400, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
@@ -1230,6 +1327,15 @@ export default function App() {
                   </div>
                 </div>
               </section>
+            </div>
+
+            <div className="mt-6 border-t border-white/10 pt-4">
+              <button
+                onClick={resetSettings}
+                className="w-full rounded border border-red-400/30 bg-red-500/10 px-3 py-2 text-xs font-bold uppercase tracking-widest text-red-300 transition-colors hover:bg-red-500/20"
+              >
+                Reset to Defaults
+              </button>
             </div>
 
             <div className="mt-12 pt-8 border-t border-white/5">
