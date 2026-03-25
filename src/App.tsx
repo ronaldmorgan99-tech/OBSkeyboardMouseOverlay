@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Settings, MousePointer2, Keyboard, Palette, Layout as LayoutIcon, Sliders } from 'lucide-react';
 
@@ -656,12 +656,28 @@ const MouseOverlay = ({ activeButtons, scrollDirection, settings, mousePos }: { 
 };
 
 export default function App() {
+  const urlConfig = useMemo(() => {
+    const params = new URLSearchParams(window.location.search);
+    const mode = (params.get('mode') || '').toLowerCase();
+    const isOverlayMode = mode === 'overlay';
+    const hideSettings = params.get('hideSettings') === '1' || params.get('hideSettings')?.toLowerCase() === 'true';
+    const transparent = params.get('transparent') === '1' || params.get('transparent')?.toLowerCase() === 'true';
+    const preset = params.get('preset');
+
+    return {
+      isOverlayMode,
+      shouldHideSettings: isOverlayMode || hideSettings,
+      transparent,
+      preset,
+    };
+  }, []);
+
   const [activeKeys, setActiveKeys] = useState<Set<string>>(new Set());
   const [activeMouseButtons, setActiveMouseButtons] = useState<Set<number>>(new Set());
   const [mousePos, setMousePos] = useState({ x: 0.5, y: 0.5 });
   const [scrollDirection, setScrollDirection] = useState<'up' | 'down' | null>(null);
   const [settings, setSettings] = useState<OverlaySettings>(DEFAULT_SETTINGS);
-  const [showSettings, setShowSettings] = useState(false);
+  const [showSettings, setShowSettings] = useState(!urlConfig.shouldHideSettings);
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const mouseTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -756,6 +772,36 @@ export default function App() {
   const handleContextMenu = useCallback((e: MouseEvent) => {
     e.preventDefault();
   }, []);
+
+  useEffect(() => {
+    setSettings(prev => {
+      let nextSettings: OverlaySettings = { ...prev };
+
+      if (urlConfig.preset) {
+        const presetName = Object.keys(PRESETS).find((name) => name.toLowerCase() === urlConfig.preset!.toLowerCase());
+        if (presetName) {
+          nextSettings = {
+            ...DEFAULT_SETTINGS,
+            ...PRESETS[presetName],
+          } as OverlaySettings;
+        }
+      }
+
+      if (urlConfig.transparent) {
+        nextSettings = {
+          ...nextSettings,
+          transparentMode: true,
+          chromaKeyMode: false,
+        };
+      }
+
+      return nextSettings;
+    });
+
+    if (urlConfig.shouldHideSettings) {
+      setShowSettings(false);
+    }
+  }, [urlConfig]);
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);
@@ -873,20 +919,22 @@ export default function App() {
       </div>
 
       {/* Settings Toggle */}
-      <button 
-        onClick={() => setShowSettings(!showSettings)}
-        className="fixed bottom-12 right-12 w-16 h-16 flex items-center justify-center bg-black/60 hover:bg-black/80 border border-yellow-500/20 rounded-full transition-all z-50 group backdrop-blur-3xl"
-        style={{ 
-          boxShadow: !settings.chromaKeyMode ? '0 10px 30px rgba(0,0,0,0.6), 0 0 0 1px rgba(250, 204, 21, 0.1)' : ''
-        }}
-      >
-        <Settings className={`w-7 h-7 transition-transform duration-700 ${showSettings ? 'rotate-180' : 'group-hover:rotate-90'} text-yellow-500`} />
-        <div className="absolute inset-0 rounded-full bg-yellow-500/5 opacity-0 group-hover:opacity-100 transition-opacity" />
-      </button>
+      {!urlConfig.shouldHideSettings && (
+        <button 
+          onClick={() => setShowSettings(!showSettings)}
+          className="fixed bottom-12 right-12 w-16 h-16 flex items-center justify-center bg-black/60 hover:bg-black/80 border border-yellow-500/20 rounded-full transition-all z-50 group backdrop-blur-3xl"
+          style={{ 
+            boxShadow: !settings.chromaKeyMode ? '0 10px 30px rgba(0,0,0,0.6), 0 0 0 1px rgba(250, 204, 21, 0.1)' : ''
+          }}
+        >
+          <Settings className={`w-7 h-7 transition-transform duration-700 ${showSettings ? 'rotate-180' : 'group-hover:rotate-90'} text-yellow-500`} />
+          <div className="absolute inset-0 rounded-full bg-yellow-500/5 opacity-0 group-hover:opacity-100 transition-opacity" />
+        </button>
+      )}
 
       {/* Settings Panel */}
       <AnimatePresence>
-        {showSettings && (
+        {showSettings && !urlConfig.shouldHideSettings && (
           <motion.div 
             initial={{ x: 400, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
