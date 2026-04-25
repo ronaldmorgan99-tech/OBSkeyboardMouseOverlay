@@ -2,6 +2,8 @@
 
 A browser-based keyboard/mouse input overlay designed for OBS Browser Source.
 
+> ✅ **Status:** This app is ready for build and launch.
+
 ## Quick Start
 
 1. Install dependencies:
