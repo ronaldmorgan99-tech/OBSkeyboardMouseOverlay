@@ -1,5 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Settings, MousePointer2, Keyboard, Palette, Layout as LayoutIcon, Sliders } from 'lucide-react';
 
@@ -834,6 +833,47 @@ const createWebSocketInputProvider = (url: string): InputProvider => ({
   },
 });
 
+const MouseMovementBox = ({ mousePos, settings }: { mousePos: { x: number; y: number }, settings: OverlaySettings }) => {
+  const xPct = Math.round(mousePos.x * 100);
+  const yPct = Math.round(mousePos.y * 100);
+  const deltaX = mousePos.x - 0.5;
+  const deltaY = mousePos.y - 0.5;
+  const absX = Math.abs(deltaX);
+  const absY = Math.abs(deltaY);
+  const directionLabel = absX < 0.08 && absY < 0.08 ? 'Center' :
+    absX > absY ? (deltaX > 0 ? 'Right' : 'Left') :
+    deltaY > 0 ? 'Down' : 'Up';
+
+  return (
+    <div className="flex flex-col items-center gap-4">
+      <div className="relative w-48 h-52 rounded-[32px] border border-white/10 bg-black/60 p-4 backdrop-blur-3xl shadow-[0_40px_90px_rgba(0,0,0,0.65)]">
+        <span className="text-[9px] uppercase tracking-[0.36em] text-white/50">Mouse Movement</span>
+        <div className="relative mt-4 h-36 rounded-3xl border border-white/10 bg-white/5 overflow-hidden">
+          <div className="absolute inset-0 grid grid-cols-3 grid-rows-3">
+            {Array.from({ length: 9 }).map((_, index) => (
+              <div key={index} className="border border-white/10" />
+            ))}
+          </div>
+          <div className="absolute inset-x-0 top-1/2 h-px bg-white/10" />
+          <div className="absolute inset-y-0 left-1/2 w-px bg-white/10" />
+          <motion.div
+            animate={{
+              x: deltaX * 72,
+              y: deltaY * 72,
+            }}
+            transition={{ type: 'spring', stiffness: 120, damping: 16 }}
+            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-yellow-400 shadow-[0_0_18px_rgba(250,204,21,0.65)]"
+          />
+        </div>
+      </div>
+      <div className="flex flex-col gap-1 text-[10px] text-white/70 text-center">
+        <span>Position: {xPct}% / {yPct}%</span>
+        <span>Direction: {directionLabel}</span>
+      </div>
+    </div>
+  );
+};
+
 export default function App() {
   const urlConfig = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
@@ -856,10 +896,8 @@ export default function App() {
   const [mousePos, setMousePos] = useState({ x: 0.5, y: 0.5 });
   const [scrollDirection, setScrollDirection] = useState<'up' | 'down' | null>(null);
   const [settings, setSettings] = useState<OverlaySettings>(() => loadStoredSettings());
-  const [showSettings, setShowSettings] = useState(false);
-  const [externalConnectionStatus, setExternalConnectionStatus] = useState<InputConnectionStatus>('disabled');
-  const [settings, setSettings] = useState<OverlaySettings>(DEFAULT_SETTINGS);
   const [showSettings, setShowSettings] = useState(!urlConfig.shouldHideSettings);
+  const [externalConnectionStatus, setExternalConnectionStatus] = useState<InputConnectionStatus>('disabled');
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const mouseTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -970,6 +1008,8 @@ export default function App() {
     const browserProvider = createBrowserEventsProvider(mouseTimeoutRef);
     return browserProvider.connect(inputController);
   }, [inputController, externalConnectionStatus, settings.inputMode]);
+
+  useEffect(() => {
     setSettings(prev => {
       let nextSettings: OverlaySettings = { ...prev };
 
@@ -1007,26 +1047,6 @@ export default function App() {
     }
   }, [settings]);
 
-  useEffect(() => {
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
-    window.addEventListener('mousedown', handleMouseDown);
-    window.addEventListener('mouseup', handleMouseUp);
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('wheel', handleWheel);
-    window.addEventListener('contextmenu', handleContextMenu);
-
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
-      window.removeEventListener('mousedown', handleMouseDown);
-      window.removeEventListener('mouseup', handleMouseUp);
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('wheel', handleWheel);
-      window.removeEventListener('contextmenu', handleContextMenu);
-    };
-  }, [handleKeyDown, handleKeyUp, handleMouseDown, handleMouseUp, handleMouseMove, handleWheel, handleContextMenu]);
-
   const updateSetting = (key: keyof OverlaySettings, value: any) => {
     setSettings(prev => ({ ...prev, [key]: value }));
   };
@@ -1052,6 +1072,8 @@ export default function App() {
     connected: 'border-emerald-400/50 text-emerald-300',
     disconnected: 'border-orange-400/50 text-orange-300',
     error: 'border-red-400/50 text-red-300',
+  };
+
   const resetSettings = () => {
     const shouldReset = window.confirm('Reset all overlay settings to defaults?');
     if (!shouldReset) return;
@@ -1117,6 +1139,9 @@ export default function App() {
         className="flex flex-col md:flex-row items-center justify-center gap-32 z-10 transition-transform duration-300"
         style={{ transform: `skewX(${settings.skewAngle}deg)` }}
       >
+        {settings.showKeyboard && (
+          <MouseMovementBox mousePos={mousePos} settings={settings} />
+        )}
         {settings.showKeyboard && (
           <div className="flex flex-col items-center">
             <div className="flex flex-col" style={{ transform: `scale(${settings.scale})`, gap: `${settings.keySpacing}px` }}>
