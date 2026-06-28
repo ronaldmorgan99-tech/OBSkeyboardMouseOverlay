@@ -1179,7 +1179,7 @@ export default function App() {
       {!urlConfig.shouldHideSettings && (
         <button 
           onClick={() => setShowSettings(!showSettings)}
-          className="fixed bottom-12 right-12 w-16 h-16 flex items-center justify-center bg-black/60 hover:bg-black/80 border border-yellow-500/20 rounded-full transition-all z-50 group backdrop-blur-3xl"
+          className="fixed bottom-12 right-12 w-16 h-16 flex items-center justify-center bg-black/60 hover:bg-black/80 border border-yellow-500/20 hover:border-yellow-500/40 rounded-full transition-all duration-300 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-500/40 z-50 group backdrop-blur-3xl"
           style={{ 
             boxShadow: !settings.chromaKeyMode ? '0 10px 30px rgba(0,0,0,0.6), 0 0 0 1px rgba(250, 204, 21, 0.1)' : ''
           }}
@@ -1196,9 +1196,9 @@ export default function App() {
             initial={{ x: 400, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: 400, opacity: 0 }}
-            className="fixed top-0 right-0 h-full w-80 bg-[#141414] border-l border-white/10 p-6 z-40 overflow-y-auto shadow-2xl"
+            className="fixed top-0 right-0 h-full w-80 bg-[#141414] border-l border-white/10 p-6 z-40 overflow-y-auto shadow-[-24px_0_60px_-12px_rgba(0,0,0,0.7)]"
           >
-            <div className="flex items-center gap-2 mb-8">
+            <div className="flex items-center gap-2.5 mb-6 pb-4 border-b border-white/10">
               <Sliders className="w-5 h-5 text-yellow-400" />
               <h2 className="text-xl font-display font-bold uppercase tracking-tight">Configuration</h2>
             </div>
@@ -1257,7 +1257,7 @@ export default function App() {
                     placeholder="https://example.com/skin.gif"
                     value={settings.mouseSkinUrl || ''} 
                     onChange={(e) => updateSetting('mouseSkinUrl', e.target.value)}
-                    className="w-full bg-black/40 border border-white/10 rounded px-2 py-1 text-xs text-white focus:border-yellow-500/50 outline-none"
+                    className="w-full bg-black/40 border border-white/10 rounded px-2.5 py-1.5 text-xs text-white transition-colors focus:border-yellow-500/50 outline-none"
                   />
                   <p className="text-[9px] opacity-40 italic">Paste a URL to apply a custom skin to the mouse body.</p>
                 </div>
@@ -1274,7 +1274,7 @@ export default function App() {
                     <button 
                       key={name}
                       onClick={() => applyPreset(name)}
-                      className="p-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded text-[10px] uppercase font-bold tracking-wider transition-colors"
+                      className="p-2 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 rounded text-[10px] uppercase font-bold tracking-wider transition-all duration-200 active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-500/40"
                     >
                       {name}
                     </button>
@@ -1304,7 +1304,7 @@ export default function App() {
                       type="text"
                       value={settings.externalInputUrl}
                       onChange={(e) => updateSetting('externalInputUrl', e.target.value)}
-                      className="w-full bg-black/40 border border-white/10 rounded px-2 py-1 text-xs text-white focus:border-sky-400/60 outline-none"
+                      className="w-full bg-black/40 border border-white/10 rounded px-2.5 py-1.5 text-xs text-white transition-colors focus:border-sky-400/60 outline-none"
                     />
                     <p className="text-[9px] opacity-50 italic">
                       Expected JSON: key, mouse_button, mouse_move, wheel, and snapshot events.
@@ -1396,7 +1396,7 @@ export default function App() {
                       type="color" 
                       value={settings.primaryColor} 
                       onChange={(e) => updateSetting('primaryColor', e.target.value)}
-                      className="w-full h-8 bg-transparent border-none cursor-pointer"
+                      className="w-full h-8 cursor-pointer rounded-md"
                     />
                   </div>
 
@@ -1407,7 +1407,7 @@ export default function App() {
                       type="color" 
                       value={settings.activeColor} 
                       onChange={(e) => updateSetting('activeColor', e.target.value)}
-                      className="w-full h-8 bg-transparent border-none cursor-pointer"
+                      className="w-full h-8 cursor-pointer rounded-md"
                     />
                   </div>
 
@@ -1418,7 +1418,7 @@ export default function App() {
                       type="color" 
                       value={settings.glowColor} 
                       onChange={(e) => updateSetting('glowColor', e.target.value)}
-                      className="w-full h-8 bg-transparent border-none cursor-pointer"
+                      className="w-full h-8 cursor-pointer rounded-md"
                     />
                   </div>
 
@@ -1430,7 +1430,7 @@ export default function App() {
                         type="color" 
                         value={settings.textColor} 
                         onChange={(e) => updateSetting('textColor', e.target.value)}
-                        className="w-full h-8 bg-transparent border-none cursor-pointer"
+                        className="w-full h-8 cursor-pointer rounded-md"
                       />
                     </div>
                     <div className="flex flex-col gap-1">
@@ -1439,7 +1439,7 @@ export default function App() {
                         type="color" 
                         value={settings.activeTextColor} 
                         onChange={(e) => updateSetting('activeTextColor', e.target.value)}
-                        className="w-full h-8 bg-transparent border-none cursor-pointer"
+                        className="w-full h-8 cursor-pointer rounded-md"
                       />
                     </div>
                   </div>
@@ -1452,7 +1452,7 @@ export default function App() {
                         type="color" 
                         value={settings.borderColor} 
                         onChange={(e) => updateSetting('borderColor', e.target.value)}
-                        className="w-full h-8 bg-transparent border-none cursor-pointer"
+                        className="w-full h-8 cursor-pointer rounded-md"
                       />
                     </div>
                     <div className="flex flex-col gap-1">
@@ -1461,7 +1461,7 @@ export default function App() {
                         type="color" 
                         value={settings.baseColor} 
                         onChange={(e) => updateSetting('baseColor', e.target.value)}
-                        className="w-full h-8 bg-transparent border-none cursor-pointer"
+                        className="w-full h-8 cursor-pointer rounded-md"
                       />
                     </div>
                   </div>
@@ -1494,7 +1494,7 @@ export default function App() {
                       type="checkbox" 
                       checked={settings.scanlines} 
                       onChange={(e) => updateSetting('scanlines', e.target.checked)}
-                      className="accent-yellow-400"
+                      className="w-5 h-5 accent-yellow-400 cursor-pointer"
                     />
                   </div>
                   <div className="flex items-center justify-between">
@@ -1503,7 +1503,7 @@ export default function App() {
                       type="checkbox" 
                       checked={settings.showFire} 
                       onChange={(e) => updateSetting('showFire', e.target.checked)}
-                      className="accent-yellow-400"
+                      className="w-5 h-5 accent-yellow-400 cursor-pointer"
                     />
                   </div>
                   <div className="flex flex-col gap-2">
@@ -1557,7 +1557,7 @@ export default function App() {
                     <select 
                       value={settings.fontFamily}
                       onChange={(e) => updateSetting('fontFamily', e.target.value)}
-                      className="bg-white/5 border border-white/10 rounded p-2 text-sm outline-none focus:border-yellow-400"
+                      className="bg-white/5 border border-white/10 rounded p-2 text-sm outline-none transition-colors focus:border-yellow-400"
                     >
                       <option value="sans">Inter (Sans)</option>
                       <option value="display">Outfit (Display)</option>
@@ -1575,7 +1575,7 @@ export default function App() {
             <div className="mt-6 border-t border-white/10 pt-4">
               <button
                 onClick={resetSettings}
-                className="w-full rounded border border-red-400/30 bg-red-500/10 px-3 py-2 text-xs font-bold uppercase tracking-widest text-red-300 transition-colors hover:bg-red-500/20"
+                className="w-full rounded border border-red-400/30 bg-red-500/10 px-3 py-2 text-xs font-bold uppercase tracking-widest text-red-300 transition-all duration-200 hover:bg-red-500/20 hover:border-red-400/50 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/40"
               >
                 Reset to Defaults
               </button>
