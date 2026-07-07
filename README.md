@@ -213,3 +213,21 @@ You can preconfigure a clean browser-source URL for OBS using query params, so y
 ```text
 http://localhost:5173/?mode=overlay&hideSettings=1&transparent=1&preset=Neon%20Elite
 ```
+
+## Desktop app (Tauri)
+
+### Prerequisites
+
+- Rust installed via `rustup`
+- On Windows: Visual Studio Build Tools
+- On Windows: WebView2 Runtime
+
+### Commands
+
+```bash
+npm install
+npm run tauri dev
+npm run tauri build
+```
+
+The packaged desktop artifacts are written to `src-tauri/target/release/bundle/`.
