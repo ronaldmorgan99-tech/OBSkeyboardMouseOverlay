@@ -1178,7 +1178,10 @@ export default function App() {
       {/* Settings Toggle */}
       {!urlConfig.shouldHideSettings && (
         <button 
-          onClick={() => setShowSettings(!showSettings)}
+          onClick={(e) => {
+            setShowSettings(!showSettings);
+            e.currentTarget.blur();
+          }}
           className="fixed bottom-12 right-12 w-16 h-16 flex items-center justify-center bg-black/60 hover:bg-black/80 border border-yellow-500/20 hover:border-yellow-500/40 rounded-full transition-all duration-300 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-500/40 z-50 group backdrop-blur-3xl"
           style={{ 
             boxShadow: !settings.chromaKeyMode ? '0 10px 30px rgba(0,0,0,0.6), 0 0 0 1px rgba(250, 204, 21, 0.1)' : ''
